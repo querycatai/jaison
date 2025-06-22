@@ -1,0 +1,56 @@
+{
+  "name": "jaison",
+  "version": "1.0.0",
+  "description": "A robust, fault-tolerant JSON parser engineered specifically for handling malformed JSON output from AI systems and language models",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:querycatai/jaison.git"
+  },
+  "bugs": {
+    "url": "https://github.com/querycatai/jaison/issues"
+  },
+  "homepage": "https://github.com/querycatai/jaison#readme",
+  "keywords": [
+    "json",
+    "parser",
+    "error-tolerant",
+    "fault-tolerant",
+    "auto-complete",
+    "malformed-json",
+    "json-repair",
+    "robust-parsing",
+    "ai-output",
+    "ai-json",
+    "llm-json",
+    "streaming-json",
+    "language-model",
+    "chatgpt",
+    "claude",
+    "markdown-json",
+    "json-fix",
+    "json-recovery",
+    "ai-systems"
+  ],
+  "author": "QueryCat AI",
+  "license": "ISC",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/querycatai"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ]
+}
