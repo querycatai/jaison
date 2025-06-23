@@ -1,16 +1,17 @@
 /**
  * Fix and normalize JSON string by handling brackets and escaping newlines
  * @param {string} jsonString - The JSON string to fix
- * @returns {{fixed: string, fixes: {bracketCompleted: boolean, stringClosed: boolean, newlineFixed: boolean, commaFixed: boolean, valueCompleted: boolean, extraCharsRemoved: boolean, markdownRemoved: boolean, chinesePunctuationFixed: boolean}}} Fix result
+ * @returns {{fixed: string, fixes: {bracketCompleted: boolean, stringClosed: boolean, newlineFixed: boolean, commaFixed: boolean, valueCompleted: boolean, extraCharsRemoved: boolean, markdownRemoved: boolean, chinesePunctuationFixed: boolean, caseNormalized: boolean}}} Fix result
  */
 
 // Pre-built map for special constant completion - built once at module load time
 const SPECIAL_CONSTANTS_MAP = new Map();
 const specialConstants = {
-    'true': ['t', 'tr', 'tru'],
-    'false': ['f', 'fa', 'fal', 'fals'],
-    'null': ['n', 'nu', 'nul'],
-    'undefined': ['u', 'un', 'und', 'unde', 'undef', 'undefi', 'undefin']
+    'true': ['t', 'tr', 'tru', 'true'],        // 部分补全到完整常量
+    'false': ['f', 'fa', 'fal', 'fals', 'false'], // 部分补全到完整常量
+    'null': ['n', 'nu', 'nul', 'null'],   // 部分补全到完整常量
+    'none': ['no', 'non', 'none'],  // Python None 支持补全，最后转换为 null
+    'undefined': ['u', 'un', 'und', 'unde', 'undef', 'undefi', 'undefin', 'undefined'] // 部分补全到完整常量
 };
 
 // Build the reverse lookup map for O(1) completion lookup
@@ -23,6 +24,19 @@ for (const [fullConstant, partials] of Object.entries(specialConstants)) {
 function fixJsonString(jsonString) {
     const originalString = jsonString;
     
+    // Initialize fixes object early
+    const fixes = {
+        bracketCompleted: false,
+        stringClosed: false,
+        newlineFixed: false,
+        commaFixed: false,
+        valueCompleted: false,
+        extraCharsRemoved: false,
+        markdownRemoved: false,
+        chinesePunctuationFixed: false,
+        caseNormalized: false
+    };
+    
     // Remove markdown code block markers (common in AI responses)
     // Remove opening ```<language> or ``` at the beginning (with optional leading whitespace)
     // Language identifier should only contain letters, numbers, hyphens, plus signs
@@ -30,7 +44,7 @@ function fixJsonString(jsonString) {
     // Remove closing ``` at the end (with optional trailing whitespace)
     jsonString = jsonString.replace(/\n?\s*```\s*$/i, '');
     
-    const markdownRemoved = originalString !== jsonString;
+    fixes.markdownRemoved = originalString !== jsonString;
     
     // Enhanced pattern to match: strings, brackets, commas, colons (including Chinese punctuation), other chars
     const tokenPattern = /"((?:[^"\\]|\\[\s\S])*)(?:"|$)|([{}[\]])|([,:：；])|([\s]+)|([^"{}[\],:：；]+)/g;
@@ -38,7 +52,6 @@ function fixJsonString(jsonString) {
     // First, collect all tokens into an array
     const tokens = [];
     let match;
-    let chinesePunctuationFixed = false; // Track if we converted Chinese punctuation
     
     while ((match = tokenPattern.exec(jsonString)) !== null) {
         const [fullMatch, stringContents, bracket, punctuation, whitespace, otherChars] = match;
@@ -59,10 +72,10 @@ function fixJsonString(jsonString) {
             let normalizedPunctuation = punctuation;
             if (punctuation === '：') {
                 normalizedPunctuation = ':';
-                chinesePunctuationFixed = true;
+                fixes.chinesePunctuationFixed = true;
             } else if (punctuation === '；') {
                 normalizedPunctuation = ',';
-                chinesePunctuationFixed = true;
+                fixes.chinesePunctuationFixed = true;
             }
             
             tokens.push({
@@ -85,16 +98,6 @@ function fixJsonString(jsonString) {
     let result = '';
     let stack = [];
     let resultIsEmpty = true; // Track if result has any non-whitespace content
-    const fixes = {
-        bracketCompleted: false,
-        stringClosed: false,
-        newlineFixed: false,
-        commaFixed: false, // Track if we removed trailing commas
-        valueCompleted: false, // Track if we added missing values after colons
-        extraCharsRemoved: false, // Track if we removed extra characters after complete JSON
-        markdownRemoved, // Track if we removed markdown code block markers
-        chinesePunctuationFixed // Track if we converted Chinese punctuation
-    };
     let lastToken = null; // Track the last meaningful token
 
     // Process each token
@@ -272,14 +275,30 @@ function fixJsonString(jsonString) {
 
         } else if (token.type === 'other') {
             // Handle other characters in chunks - with special constant completion
-            let processedValue = token.value.trim().toLowerCase();
+            let processedValue = token.value.toLowerCase();
             
             // Check if this looks like a partial special constant and try to complete it
             const completedConstant = SPECIAL_CONSTANTS_MAP.get(processedValue);
             
             if (completedConstant) {
-                result += completedConstant;
-                fixes.valueCompleted = true; // Track that we completed a value
+                // 检查是否发生了补全 - 原值长度小于补全结果长度
+                if (token.value.length < completedConstant.length) {
+                    fixes.valueCompleted = true;
+                }
+                
+                // 检查是否发生了大小写矫正 - 小写后的值和原值不同
+                if (processedValue !== token.value) {
+                    fixes.caseNormalized = true;
+                }
+                
+                // 特殊处理：只有 none 转换为 null 时才标记 pythonConstantConverted
+                let finalConstant = completedConstant;
+                if (completedConstant === 'none') {
+                    finalConstant = 'null';
+                    fixes.pythonConstantConverted = true;
+                }
+                
+                result += finalConstant;
             } else {
                 result += token.value; // Use original value with whitespace preserved
             }
@@ -304,7 +323,7 @@ function fixJsonString(jsonString) {
 /**
  * Parse JSON string with error tolerance and auto-completion
  * @param {string} jsonString - The JSON string to parse
- * @returns {{success: boolean, data: any, fixes: {bracketCompleted: boolean, stringClosed: boolean, newlineFixed: boolean, commaFixed: boolean, valueCompleted: boolean, extraCharsRemoved: boolean, markdownRemoved: boolean, chinesePunctuationFixed: boolean}, fixedJson: string, error?: string}} Parsing result
+ * @returns {{success: boolean, data: any, fixes: {bracketCompleted: boolean, stringClosed: boolean, newlineFixed: boolean, commaFixed: boolean, valueCompleted: boolean, extraCharsRemoved: boolean, markdownRemoved: boolean, chinesePunctuationFixed: boolean, caseNormalized: boolean, pythonConstantConverted: boolean}, fixedJson: string, error?: string}} Parsing result
  */
 function parseJson(jsonString) {
     if (!jsonString || typeof jsonString !== 'string') {

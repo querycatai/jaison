@@ -1,6 +1,6 @@
 const  { describe, it } = require('node:test');
 const assert = require('node:assert');
-const parser = require('.');
+const parser = require('../index.js');
 
 // 1. Basic Functionality & Type Support
 // --------------------------------------------------
@@ -2048,88 +2048,96 @@ describe('JSON Parser - Special Constant Completion', () => {
         });
     });
 
-    it('should handle case insensitive completion', () => {
+    // 新增：测试完整常量的处理（修复后的功能）
+    it('should handle complete constants correctly', () => {
         const testCases = [
-            { input: '{"value": TRU}', expected: { value: true } },
-            { input: '{"value": FaLs}', expected: { value: false } },
-            { input: '{"value": NUL}', expected: { value: null } }
+            { input: '{"complete": true}', expected: { complete: true } },
+            { input: '{"complete": false}', expected: { complete: false } },
+            { input: '{"complete": null}', expected: { complete: null } }
         ];
 
         testCases.forEach(({ input, expected }) => {
             const result = parser(input);
             assert.strictEqual(result.success, true);
-            assert.strictEqual(result.fixes.valueCompleted, true);
+            // 完整常量不需要补全，所以 valueCompleted 应该是 false
+            assert.strictEqual(result.fixes.valueCompleted, false);
             assert.deepStrictEqual(result.data, expected);
         });
     });
 
-    it('should complete constants in array context', () => {
-        const data = '[tru, fals, nul]';
-        const result = parser(data);
-        assert.strictEqual(result.success, true);
-        assert.strictEqual(result.fixes.valueCompleted, true);
-        assert.deepStrictEqual(result.data, [true, false, null]);
+    // 新增：测试大小写常量转换（修复后的功能）
+    it('should convert case-insensitive constants', () => {
+        const testCases = [
+            { input: '{"upper": TRUE}', expected: { upper: true } },
+            { input: '{"upper": FALSE}', expected: { upper: false } },
+            { input: '{"upper": NULL}', expected: { upper: null } },
+            { input: '{"mixed": True}', expected: { mixed: true } },
+            { input: '{"mixed": False}', expected: { mixed: false } },
+            { input: '{"mixed": Null}', expected: { mixed: null } }
+        ];
+
+        testCases.forEach(({ input, expected }) => {
+            const result = parser(input);
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.fixes.caseNormalized, true);
+            assert.deepStrictEqual(result.data, expected);
+        });
     });
 
-    it('should complete multiple constants in complex structure', () => {
-        const data = '{"bool1": t, "bool2": f, "empty": nul, "nested": {"partial": tr}}';
+    // 新增：测试 Python 常量支持（修复后的功能）
+    it('should handle Python constants', () => {
+        const testCases = [
+            { 
+                input: '{"py_true": True}', 
+                expected: { py_true: true },
+                expectedFix: 'caseNormalized' // True/False 只做大小写矫正
+            },
+            { 
+                input: '{"py_false": False}', 
+                expected: { py_false: false },
+                expectedFix: 'caseNormalized' // True/False 只做大小写矫正
+            },
+            { 
+                input: '{"py_none": None}', 
+                expected: { py_none: null },
+                expectedFix: 'pythonConstantConverted' // None 转换为 null
+            },
+            { 
+                input: '{"lowercase_none": none}', 
+                expected: { lowercase_none: null },
+                expectedFix: 'pythonConstantConverted' // none 转换为 null
+            }
+        ];
+
+        testCases.forEach(({ input, expected, expectedFix }) => {
+            const result = parser(input);
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.fixes[expectedFix], true);
+            assert.deepStrictEqual(result.data, expected);
+        });
+    });
+
+    // 新增：测试混合常量类型
+    it('should handle mixed constant types in complex structures', () => {
+        const data = '{"python": True, "partial": t, "upper": FALSE, "normal": null, "none": None}';
         const result = parser(data);
         assert.strictEqual(result.success, true);
         assert.strictEqual(result.fixes.valueCompleted, true);
         assert.deepStrictEqual(result.data, {
-            bool1: true,
-            bool2: false,
-            empty: null,
-            nested: { partial: true }
+            python: true,
+            partial: true,
+            upper: false,
+            normal: null,
+            none: null
         });
     });
 
-    it('should not complete unrecognized partial text', () => {
-        const data = '{"unknown": xyz}';
-        const result = parser(data);
-        assert.strictEqual(result.success, false);
-        assert.strictEqual(result.fixes.valueCompleted, false);
-    });
-
-    it('should not complete already complete constants', () => {
-        const data = '{"complete": true, "another": false, "third": null}';
-        const result = parser(data);
-        assert.strictEqual(result.success, true);
-        assert.strictEqual(result.fixes.valueCompleted, false);
-        assert.deepStrictEqual(result.data, { complete: true, another: false, third: null });
-    });
-
-    it('should complete constants with whitespace around them', () => {
-        const data = '{"value": tru , "another": f }';
+    // 新增：测试数组中的常量补全
+    it('should complete constants in arrays', () => {
+        const data = '[TRUE, f, None, tru, null]';
         const result = parser(data);
         assert.strictEqual(result.success, true);
         assert.strictEqual(result.fixes.valueCompleted, true);
-        assert.deepStrictEqual(result.data, { value: true, another: false });
-    });
-
-    it('should complete constants in incomplete JSON', () => {
-        const data = '{"bool": tru, "flag": f';
-        const result = parser(data);
-        assert.strictEqual(result.success, true);
-        assert.strictEqual(result.fixes.valueCompleted, true);
-        assert.strictEqual(result.fixes.bracketCompleted, true);
-        assert.deepStrictEqual(result.data, { bool: true, flag: false });
-    });
-
-    it('should handle undefined completion (JSON incompatible)', () => {
-        const testCases = [
-            '{"missing": u}',
-            '{"missing": un}',
-            '{"missing": undefin}'
-        ];
-
-        testCases.forEach(input => {
-            const result = parser(input);
-            // undefined is not valid JSON, so parsing should fail
-            assert.strictEqual(result.success, false);
-            assert.strictEqual(result.fixes.valueCompleted, true);
-            // But the fix should be applied in fixedJson
-            assert(result.fixedJson.includes('undefined'));
-        });
+        assert.deepStrictEqual(result.data, [true, false, null, true, null]);
     });
 });

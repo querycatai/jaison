@@ -1,11 +1,11 @@
 {
   "name": "jaison",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A robust, fault-tolerant JSON parser engineered specifically for handling malformed JSON output from AI systems and language models",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "test": "node test.js"
+    "test": "node test/test.js"
   },
   "repository": {
     "type": "git",
