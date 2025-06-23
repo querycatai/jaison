@@ -18,6 +18,7 @@ AI systems often generate JSON with structural errors that cause standard parser
 - **String Repair**: Fixes unescaped newlines and unclosed string literals
 - **Comma Normalization**: Removes trailing commas and handles consecutive commas
 - **Value Completion**: Adds missing values after colons (defaults to `null`)
+- **Constant Completion**: Intelligently completes partial constants (`tru` → `true`, `nul` → `null`)
 - **Chinese Punctuation**: Converts Chinese punctuation (：；) to English equivalents
 
 ### 📝 **Markdown Integration**
@@ -108,6 +109,7 @@ Jaison provides the following automatic repair features:
 | **Newline Escaping** | Escapes raw newlines | `{"text": "line1\nline2"}` | Becomes `"line1\\nline2"` |
 | **Comma Normalization** | Removes trailing commas | `{"a": 1, "b": 2,}` | Removes final `,` |
 | **Value Completion** | Adds missing values | `{"key":}` | Becomes `{"key": null}` |
+| **Constant Completion** | Completes partial constants | `{"flag": tru, "val": nul}` | Becomes `{"flag": true, "val": null}` |
 | **Chinese Punctuation** | Converts Chinese punctuation | `{"key"："value"；"num"：1}` | Becomes `{"key":"value","num":1}` |
 | **Extra Text Removal** | Removes trailing non-JSON content | `{"data": 1} // comment` | Keeps only JSON |
 
@@ -201,7 +203,25 @@ const result3 = jaison(preserved);
 // ✅ String content remains unchanged
 ```
 
-### 7. Complex Cases with Multiple Issues
+### 7. Special Constant Completion
+```javascript
+// Partial boolean and null constants
+const partialConstants = '{"flag": tru, "empty": nul, "count": fals}';
+const result = jaison(partialConstants);
+// ✅ result.success === true
+// ✅ result.fixes.valueCompleted === true
+// ✅ result.data === { flag: true, empty: null, count: false }
+
+// Case insensitive completion
+const mixedCase = '{"debug": TRU, "data": NUL}';
+jaison(mixedCase); // ✅ Completes to true and null
+
+// Incomplete constants with special handling
+const incomplete = '{"partial": "tr", "complete": true}';
+jaison(incomplete); // ✅ "tr" in string context is preserved
+```
+
+### 8. Complex Cases with Multiple Issues
 ```javascript
 // Example with comprehensive fixes
 const complexCase = '{"name": "John", "items": [1, 2, 3,}';

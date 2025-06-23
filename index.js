@@ -3,6 +3,23 @@
  * @param {string} jsonString - The JSON string to fix
  * @returns {{fixed: string, fixes: {bracketCompleted: boolean, stringClosed: boolean, newlineFixed: boolean, commaFixed: boolean, valueCompleted: boolean, extraCharsRemoved: boolean, markdownRemoved: boolean, chinesePunctuationFixed: boolean}}} Fix result
  */
+
+// Pre-built map for special constant completion - built once at module load time
+const SPECIAL_CONSTANTS_MAP = new Map();
+const specialConstants = {
+    'true': ['t', 'tr', 'tru'],
+    'false': ['f', 'fa', 'fal', 'fals'],
+    'null': ['n', 'nu', 'nul'],
+    'undefined': ['u', 'un', 'und', 'unde', 'undef', 'undefi', 'undefin']
+};
+
+// Build the reverse lookup map for O(1) completion lookup
+for (const [fullConstant, partials] of Object.entries(specialConstants)) {
+    for (const partial of partials) {
+        SPECIAL_CONSTANTS_MAP.set(partial, fullConstant);
+    }
+}
+
 function fixJsonString(jsonString) {
     const originalString = jsonString;
     
@@ -254,8 +271,19 @@ function fixJsonString(jsonString) {
             result += token.value;
 
         } else if (token.type === 'other') {
-            // Handle other characters in chunks
-            result += token.value;
+            // Handle other characters in chunks - with special constant completion
+            let processedValue = token.value.trim().toLowerCase();
+            
+            // Check if this looks like a partial special constant and try to complete it
+            const completedConstant = SPECIAL_CONSTANTS_MAP.get(processedValue);
+            
+            if (completedConstant) {
+                result += completedConstant;
+                fixes.valueCompleted = true; // Track that we completed a value
+            } else {
+                result += token.value; // Use original value with whitespace preserved
+            }
+            
             lastToken = 'other';
         }
     }

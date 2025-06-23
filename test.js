@@ -2011,3 +2011,125 @@ describe('JSON Parser - Chinese Punctuation Conversion', () => {
         assert.deepStrictEqual(result.data, { english: "text", numbers: [1, 2, 3] });
     });
 });
+
+// 19. Special Constant Completion Tests
+// --------------------------------------------------
+describe('JSON Parser - Special Constant Completion', () => {
+    it('should complete partial boolean constants', () => {
+        const testCases = [
+            { input: '{"active": t}', expected: { active: true } },
+            { input: '{"active": tr}', expected: { active: true } },
+            { input: '{"active": tru}', expected: { active: true } },
+            { input: '{"disabled": f}', expected: { disabled: false } },
+            { input: '{"disabled": fa}', expected: { disabled: false } },
+            { input: '{"disabled": fals}', expected: { disabled: false } }
+        ];
+
+        testCases.forEach(({ input, expected }) => {
+            const result = parser(input);
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.fixes.valueCompleted, true);
+            assert.deepStrictEqual(result.data, expected);
+        });
+    });
+
+    it('should complete partial null constants', () => {
+        const testCases = [
+            { input: '{"value": n}', expected: { value: null } },
+            { input: '{"value": nu}', expected: { value: null } },
+            { input: '{"value": nul}', expected: { value: null } }
+        ];
+
+        testCases.forEach(({ input, expected }) => {
+            const result = parser(input);
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.fixes.valueCompleted, true);
+            assert.deepStrictEqual(result.data, expected);
+        });
+    });
+
+    it('should handle case insensitive completion', () => {
+        const testCases = [
+            { input: '{"value": TRU}', expected: { value: true } },
+            { input: '{"value": FaLs}', expected: { value: false } },
+            { input: '{"value": NUL}', expected: { value: null } }
+        ];
+
+        testCases.forEach(({ input, expected }) => {
+            const result = parser(input);
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.fixes.valueCompleted, true);
+            assert.deepStrictEqual(result.data, expected);
+        });
+    });
+
+    it('should complete constants in array context', () => {
+        const data = '[tru, fals, nul]';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.valueCompleted, true);
+        assert.deepStrictEqual(result.data, [true, false, null]);
+    });
+
+    it('should complete multiple constants in complex structure', () => {
+        const data = '{"bool1": t, "bool2": f, "empty": nul, "nested": {"partial": tr}}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.valueCompleted, true);
+        assert.deepStrictEqual(result.data, {
+            bool1: true,
+            bool2: false,
+            empty: null,
+            nested: { partial: true }
+        });
+    });
+
+    it('should not complete unrecognized partial text', () => {
+        const data = '{"unknown": xyz}';
+        const result = parser(data);
+        assert.strictEqual(result.success, false);
+        assert.strictEqual(result.fixes.valueCompleted, false);
+    });
+
+    it('should not complete already complete constants', () => {
+        const data = '{"complete": true, "another": false, "third": null}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.valueCompleted, false);
+        assert.deepStrictEqual(result.data, { complete: true, another: false, third: null });
+    });
+
+    it('should complete constants with whitespace around them', () => {
+        const data = '{"value": tru , "another": f }';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.valueCompleted, true);
+        assert.deepStrictEqual(result.data, { value: true, another: false });
+    });
+
+    it('should complete constants in incomplete JSON', () => {
+        const data = '{"bool": tru, "flag": f';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.valueCompleted, true);
+        assert.strictEqual(result.fixes.bracketCompleted, true);
+        assert.deepStrictEqual(result.data, { bool: true, flag: false });
+    });
+
+    it('should handle undefined completion (JSON incompatible)', () => {
+        const testCases = [
+            '{"missing": u}',
+            '{"missing": un}',
+            '{"missing": undefin}'
+        ];
+
+        testCases.forEach(input => {
+            const result = parser(input);
+            // undefined is not valid JSON, so parsing should fail
+            assert.strictEqual(result.success, false);
+            assert.strictEqual(result.fixes.valueCompleted, true);
+            // But the fix should be applied in fixedJson
+            assert(result.fixedJson.includes('undefined'));
+        });
+    });
+});
