@@ -933,7 +933,7 @@ describe('JSON Parser - Advanced Comma & Colon Handling', () => {
             const result = parser(jsonWithStartCommas);
             assert.strictEqual(result.success, true, "Should successfully parse array with comma at start");
             assert.strictEqual(result.fixes.commaFixed, true, "Should indicate comma was fixed");
-            assert.deepStrictEqual(result.data, [null, 1, 2], "Should insert null placeholder at start");
+            assert.deepStrictEqual(result.data, [null, 1, 2], "Should result in [null, 1, 2]");
         });
 
         it('should handle consecutive commas in nested arrays', () => {
@@ -1879,5 +1879,135 @@ describe('JSON Parser - Error Recovery & Robustness', () => {
                 assert(typeof result.error === 'string');
             }
         });
+    });
+});
+
+// 18. Chinese Punctuation Conversion Tests
+// --------------------------------------------------
+describe('JSON Parser - Chinese Punctuation Conversion', () => {
+    it('should convert Chinese colon to English colon', () => {
+        const data = '{"name"："张三", "age": 25}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.deepStrictEqual(result.data, { name: "张三", age: 25 });
+        assert.strictEqual(result.fixedJson, '{"name":"张三", "age": 25}');
+    });
+
+    it('should convert Chinese semicolon to comma', () => {
+        const data = '["apple"；"banana"；"orange"]';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.deepStrictEqual(result.data, ["apple", "banana", "orange"]);
+        assert.strictEqual(result.fixedJson, '["apple","banana","orange"]');
+    });
+
+    it('should handle mixed Chinese and English punctuation', () => {
+        const data = '{"title"："测试"；"count"：10, "active": true}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.deepStrictEqual(result.data, { title: "测试", count: 10, active: true });
+    });
+
+    it('should not replace Chinese punctuation inside strings', () => {
+        const data = '{"text": "这是一个测试：包含中文标点；符号"}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, false);
+        assert.deepStrictEqual(result.data, { text: "这是一个测试：包含中文标点；符号" });
+    });
+
+    it('should handle nested objects with Chinese punctuation', () => {
+        const data = '{"user"：{"name"："李四"；"profile"：{"email"："test@example.com"}}}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.deepStrictEqual(result.data, {
+            user: {
+                name: "李四",
+                profile: {
+                    email: "test@example.com"
+                }
+            }
+        });
+    });
+
+    it('should handle arrays with Chinese punctuation', () => {
+        const data = '{"items"：[{"id"：1；"name"："item1"}；{"id"：2；"name"："item2"}]}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.deepStrictEqual(result.data, {
+            items: [
+                { id: 1, name: "item1" },
+                { id: 2, name: "item2" }
+            ]
+        });
+    });
+
+    it('should handle Chinese punctuation with whitespace', () => {
+        const data = '{"key1" ： "value1" ； "key2" ： "value2"}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.deepStrictEqual(result.data, { key1: "value1", key2: "value2" });
+    });
+
+    it('should handle incomplete JSON with Chinese punctuation', () => {
+        const data = '{"name"："张三"；"age"：';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.strictEqual(result.fixes.bracketCompleted, true);
+        assert.strictEqual(result.fixes.valueCompleted, true);
+        assert.deepStrictEqual(result.data, { name: "张三", age: null });
+    });
+
+    it('should handle Chinese punctuation in markdown code blocks', () => {
+        const data = '```json\n{"title"："测试数据"；"value"：123}\n```';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.markdownRemoved, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.deepStrictEqual(result.data, { title: "测试数据", value: 123 });
+    });
+
+    it('should handle mixed Chinese punctuation with trailing commas', () => {
+        const data = '{"items"：["first"；"second"；]；"count"：2；}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.strictEqual(result.fixes.commaFixed, true);
+        assert.deepStrictEqual(result.data, { items: ["first", "second"], count: 2 });
+    });
+
+    it('should preserve Chinese punctuation in string values while fixing structure', () => {
+        const data = '{"message"："这是一条消息：内容很重要；请仔细阅读"；"priority"：1}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.deepStrictEqual(result.data, {
+            message: "这是一条消息：内容很重要；请仔细阅读",
+            priority: 1
+        });
+    });
+
+    it('should handle Chinese punctuation with consecutive commas in arrays', () => {
+        const data = '[；；"item1"；；"item2"；；]';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, true);
+        assert.strictEqual(result.fixes.commaFixed, true);
+        assert.deepStrictEqual(result.data, [null, null, "item1", null, "item2", null]);
+    });
+
+    it('should not indicate Chinese punctuation fixed when there is none', () => {
+        const data = '{"english": "text", "numbers": [1, 2, 3]}';
+        const result = parser(data);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.fixes.chinesePunctuationFixed, false);
+        assert.deepStrictEqual(result.data, { english: "text", numbers: [1, 2, 3] });
     });
 });

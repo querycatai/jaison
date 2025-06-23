@@ -1,7 +1,7 @@
 /**
  * Fix and normalize JSON string by handling brackets and escaping newlines
  * @param {string} jsonString - The JSON string to fix
- * @returns {{fixed: string, fixes: {bracketCompleted: boolean, stringClosed: boolean, newlineFixed: boolean, commaFixed: boolean, valueCompleted: boolean, extraCharsRemoved: boolean, markdownRemoved: boolean}}} Fix result
+ * @returns {{fixed: string, fixes: {bracketCompleted: boolean, stringClosed: boolean, newlineFixed: boolean, commaFixed: boolean, valueCompleted: boolean, extraCharsRemoved: boolean, markdownRemoved: boolean, chinesePunctuationFixed: boolean}}} Fix result
  */
 function fixJsonString(jsonString) {
     const originalString = jsonString;
@@ -15,12 +15,14 @@ function fixJsonString(jsonString) {
     
     const markdownRemoved = originalString !== jsonString;
     
-    // Enhanced pattern to match: strings, brackets, commas, colons, other chars
-    const tokenPattern = /"((?:[^"\\]|\\[\s\S])*)(?:"|$)|([{}[\]])|([,:])|([\s]+)|([^"{}[\],:]+)/g;
+    // Enhanced pattern to match: strings, brackets, commas, colons (including Chinese punctuation), other chars
+    const tokenPattern = /"((?:[^"\\]|\\[\s\S])*)(?:"|$)|([{}[\]])|([,:：；])|([\s]+)|([^"{}[\],:：；]+)/g;
 
     // First, collect all tokens into an array
     const tokens = [];
     let match;
+    let chinesePunctuationFixed = false; // Track if we converted Chinese punctuation
+    
     while ((match = tokenPattern.exec(jsonString)) !== null) {
         const [fullMatch, stringContents, bracket, punctuation, whitespace, otherChars] = match;
 
@@ -36,9 +38,19 @@ function fixJsonString(jsonString) {
                 value: bracket
             });
         } else if (punctuation) {
+            // Convert Chinese punctuation to English equivalents
+            let normalizedPunctuation = punctuation;
+            if (punctuation === '：') {
+                normalizedPunctuation = ':';
+                chinesePunctuationFixed = true;
+            } else if (punctuation === '；') {
+                normalizedPunctuation = ',';
+                chinesePunctuationFixed = true;
+            }
+            
             tokens.push({
                 type: 'punctuation',
-                value: punctuation
+                value: normalizedPunctuation
             });
         } else if (whitespace) {
             tokens.push({
@@ -63,7 +75,8 @@ function fixJsonString(jsonString) {
         commaFixed: false, // Track if we removed trailing commas
         valueCompleted: false, // Track if we added missing values after colons
         extraCharsRemoved: false, // Track if we removed extra characters after complete JSON
-        markdownRemoved // Track if we removed markdown code block markers
+        markdownRemoved, // Track if we removed markdown code block markers
+        chinesePunctuationFixed // Track if we converted Chinese punctuation
     };
     let lastToken = null; // Track the last meaningful token
 
@@ -215,7 +228,7 @@ function fixJsonString(jsonString) {
                 let j = i + 1;
 
                 // Skip single whitespace token if present
-                if (tokens[j].type === 'whitespace') {
+                if (tokens[j] && tokens[j].type === 'whitespace') {
                     j++;
                 }
 
@@ -263,7 +276,7 @@ function fixJsonString(jsonString) {
 /**
  * Parse JSON string with error tolerance and auto-completion
  * @param {string} jsonString - The JSON string to parse
- * @returns {{success: boolean, data: any, fixes: {bracketCompleted: boolean, stringClosed: boolean, newlineFixed: boolean, commaFixed: boolean, valueCompleted: boolean, extraCharsRemoved: boolean, markdownRemoved: boolean}, fixedJson: string, error?: string}} Parsing result
+ * @returns {{success: boolean, data: any, fixes: {bracketCompleted: boolean, stringClosed: boolean, newlineFixed: boolean, commaFixed: boolean, valueCompleted: boolean, extraCharsRemoved: boolean, markdownRemoved: boolean, chinesePunctuationFixed: boolean}, fixedJson: string, error?: string}} Parsing result
  */
 function parseJson(jsonString) {
     if (!jsonString || typeof jsonString !== 'string') {

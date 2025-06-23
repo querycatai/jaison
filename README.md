@@ -18,9 +18,10 @@ AI systems often generate JSON with structural errors that cause standard parser
 - **String Repair**: Fixes unescaped newlines and unclosed string literals
 - **Comma Normalization**: Removes trailing commas and handles consecutive commas
 - **Value Completion**: Adds missing values after colons (defaults to `null`)
+- **Chinese Punctuation**: Converts Chinese punctuation (：；) to English equivalents
 
 ### 📝 **Markdown Integration**
-- Automatically strips markdown code block wrappers (`\`\`\`json`, `\`\`\`js`, etc.)
+- Automatically strips markdown code block wrappers (\`\`\`json, \`\`\`js, etc.)
 - Supports various language identifiers (javascript, typescript, python, etc.)
 - Removes extra text before and after JSON content
 
@@ -95,7 +96,22 @@ console.log(parsed);
 // }
 ```
 
-## Common AI JSON Problems Solved
+## Repair Capabilities
+
+Jaison provides the following automatic repair features:
+
+| Issue Type | Description | Example | Fix Applied |
+|------------|-------------|---------|-------------|
+| **Markdown Removal** | Strips code block wrappers | \`\`\`json\n{...}\n\`\`\` | Extracts pure JSON |
+| **Bracket Completion** | Closes missing brackets | `{"items": [1, 2, 3` | Adds `]}` |
+| **String Closing** | Closes unclosed strings | `{"msg": "hello` | Adds closing `"` |
+| **Newline Escaping** | Escapes raw newlines | `{"text": "line1\nline2"}` | Becomes `"line1\\nline2"` |
+| **Comma Normalization** | Removes trailing commas | `{"a": 1, "b": 2,}` | Removes final `,` |
+| **Value Completion** | Adds missing values | `{"key":}` | Becomes `{"key": null}` |
+| **Chinese Punctuation** | Converts Chinese punctuation | `{"key"："value"；"num"：1}` | Becomes `{"key":"value","num":1}` |
+| **Extra Text Removal** | Removes trailing non-JSON content | `{"data": 1} // comment` | Keeps only JSON |
+
+## Common AI JSON Problems & Examples
 
 Jaison automatically handles the most frequent issues encountered in AI-generated JSON:
 
@@ -103,7 +119,10 @@ Jaison automatically handles the most frequent issues encountered in AI-generate
 ```javascript
 // Very common in ChatGPT and other AI responses
 const wrapped = '```json\n{"data": "value", "count": 42}\n```';
-jaison(wrapped); // ✅ Automatically extracts and parses JSON
+const result = jaison(wrapped);
+// ✅ result.success === true
+// ✅ result.fixes.markdownRemoved === true
+// ✅ result.data === { data: "value", count: 42 }
 
 // Works with various language identifiers  
 const jsWrapper = '```javascript\n{"result": "success"}\n```';
@@ -114,15 +133,21 @@ jaison(jsWrapper); // ✅ Supports js, typescript, python, etc.
 ```javascript
 // Common when AI response is cut off
 const incomplete = '{"thinking": "Let me analyze this", "result":';
-jaison(incomplete); // ✅ Adds missing value and closing brace
-// Result: {"thinking": "Let me analyze this", "result": null}
+const result = jaison(incomplete);
+// ✅ result.success === true
+// ✅ result.fixes.bracketCompleted === true
+// ✅ result.fixes.valueCompleted === true
+// ✅ result.data === { thinking: "Let me analyze this", result: null }
 ```
 
 ### 3. Extra Text After JSON
 ```javascript
 // AI often adds explanatory text after JSON
 const withTrailingText = '{"answer": 42} // This is the result';
-jaison(withTrailingText); // ✅ Extracts clean JSON
+const result = jaison(withTrailingText);
+// ✅ result.success === true
+// ✅ result.fixes.extraCharsRemoved === true
+// ✅ result.data === { answer: 42 }
 
 // Also works with longer trailing content
 const withComment = '{"status": "success"} <- This indicates success';
@@ -133,18 +158,64 @@ jaison(withComment); // ✅ Removes trailing text
 ```javascript
 // Multiline AI responses often have this issue
 const multiline = '{"explanation": "This is a\nmultiline response"}';
-jaison(multiline); // ✅ Escapes to: {"explanation": "This is a\\nmultiline response"}
+const result = jaison(multiline);
+// ✅ result.success === true
+// ✅ result.fixes.newlineFixed === true
+// ✅ result.data.explanation === "This is a\nmultiline response"
 ```
 
 ### 5. Trailing Commas and Bracket Issues
 ```javascript
 // Missing closing brackets
 const missingBrackets = '{"items": [1, 2, 3';
-jaison(missingBrackets); // ✅ Adds: {"items": [1, 2, 3]}
+const result = jaison(missingBrackets);
+// ✅ result.success === true
+// ✅ result.fixes.bracketCompleted === true
+// ✅ result.data === { items: [1, 2, 3] }
 
 // Trailing commas
 const trailingComma = '{"name": "John", "age": 30,}';
-jaison(trailingComma); // ✅ Removes trailing comma
+const result2 = jaison(trailingComma);
+// ✅ result2.success === true
+// ✅ result2.fixes.commaFixed === true
+// ✅ result2.data === { name: "John", age: 30 }
+```
+
+### 6. Chinese Punctuation Conversion
+```javascript
+// Chinese colon and semicolon in JSON structure
+const chinesePunctuation = '{"name"："张三"；"age"：25}';
+const result = jaison(chinesePunctuation);
+// ✅ result.success === true
+// ✅ result.fixes.chinesePunctuationFixed === true
+// ✅ result.data === { name: "张三", age: 25 }
+
+// Mixed Chinese and English punctuation
+const mixed = '{"title"："测试数据"；"count"：10, "active": true}';
+jaison(mixed); // ✅ Converts Chinese punctuation while preserving content
+
+// Preserves Chinese punctuation inside strings
+const preserved = '{"text": "这是一个测试：包含中文标点；符号"}';
+const result3 = jaison(preserved);
+// ✅ result3.fixes.chinesePunctuationFixed === false (no structural changes)
+// ✅ String content remains unchanged
+```
+
+### 7. Complex Cases with Multiple Issues
+```javascript
+// Example with comprehensive fixes
+const complexCase = '{"name": "John", "items": [1, 2, 3,}';
+const result = jaison(complexCase);
+// ✅ result.success === true
+// ✅ result.fixes.commaFixed === true
+// ✅ result.data === { name: "John", items: [1, 2, 3] }
+
+// Example with parsing failure
+const brokenCase = 'completely broken {{{ json';
+const failed = jaison(brokenCase);
+// ❌ failed.success === false
+// ❌ failed.error === "JSON parsing failed: ..."
+// ℹ️ failed.fixedJson === attempted repair string
 ```
 
 ## API Reference
@@ -168,95 +239,64 @@ Returns an object with the following structure:
   success: boolean;           // Whether parsing was successful
   data: any;                  // Parsed JSON data (undefined if failed)
   fixes: {                    // Details of all applied fixes
-    bracketCompleted: boolean;    // Missing brackets were added
-    stringClosed: boolean;        // Unclosed strings were fixed
-    newlineFixed: boolean;        // Unescaped newlines were escaped
-    commaFixed: boolean;          // Comma issues were resolved
-    valueCompleted: boolean;      // Missing values were added
-    extraCharsRemoved: boolean;   // Extra characters were removed
-    markdownRemoved: boolean;     // Markdown wrapper was removed
+    bracketCompleted: boolean;       // Missing brackets were added
+    stringClosed: boolean;           // Unclosed strings were fixed
+    newlineFixed: boolean;           // Unescaped newlines were escaped
+    commaFixed: boolean;             // Comma issues were resolved
+    valueCompleted: boolean;         // Missing values were added
+    extraCharsRemoved: boolean;      // Extra characters were removed
+    markdownRemoved: boolean;        // Markdown wrapper was removed
+    chinesePunctuationFixed: boolean; // Chinese punctuation was converted
   };
   fixedJson: string;          // The repaired JSON string
   error?: string;             // Error message if parsing failed
 }
 ```
 
-#### Examples
+## Advanced Usage Examples
+
+### Complex Scenarios with Multiple Fixes
 
 ```javascript
-// Successful parsing with fixes
-const result = jaison('{"name": "John", "items": [1, 2, 3,}');
+// Real-world scenario: AI response with multiple issues
+const messyAiResponse = `
+\`\`\`json
+{"analysis"："数据分析完成"；"results": [
+  {"score": 0.95, "category": "good",
+  {"score": 0.87, "category": "ok"；
+\`\`\`
+Additional notes: The analysis is complete.
+`;
+
+const result = jaison(messyAiResponse);
+// ✅ Fixes: markdown removal, Chinese punctuation, missing brackets
 // result.success === true
-// result.fixes.commaFixed === true
-// result.data === { name: "John", items: [1, 2, 3] }
-
-// Failed parsing (returns repair attempt)
-const failed = jaison('completely broken {{{ json');
-// failed.success === false
-// failed.error === "JSON parsing failed: ..."
-// failed.fixedJson === attempted repair
+// result.fixes.markdownRemoved === true
+// result.fixes.chinesePunctuationFixed === true
+// result.fixes.bracketCompleted === true
+// result.fixes.extraCharsRemoved === true
 ```
 
-## Detailed Examples
-
-### Working with Markdown-Wrapped JSON
+### Error Recovery and Fallback Handling
 
 ```javascript
-// Standard markdown JSON block
-const result1 = jaison('```json\n{"name": "John", "age": 30}\n```');
-// ✅ Automatically removes wrapper and parses
-
-// Different language identifiers work too
-const result2 = jaison('```javascript\n{"data": [1, 2, 3]}\n```');
-// ✅ Supports js, typescript, python, and more
+// Graceful error handling
+function parseAiResponse(response) {
+  const result = jaison(response);
+  
+  if (result.success) {
+    console.log('Parsed successfully:', result.data);
+    if (Object.keys(result.fixes).some(key => result.fixes[key])) {
+      console.log('Applied fixes:', result.fixes);
+    }
+    return result.data;
+  } else {
+    console.error('Parse failed:', result.error);
+    console.log('Attempted repair:', result.fixedJson);
+    return null; // or default value
+  }
+}
 ```
-
-### Handling Structural Issues
-
-```javascript
-// Missing closing brackets
-const incomplete = jaison('{"name": "John", "items": [1, 2, 3');
-// ✅ Result: {"name": "John", "items": [1, 2, 3]}
-// fixes.bracketCompleted === true
-
-// Trailing commas
-const trailing = jaison('{"name": "John", "age": 30,}');
-// ✅ Removes trailing comma
-// fixes.commaFixed === true
-
-// Missing values after colons
-const missingValue = jaison('{"name": "John", "age":}');
-// ✅ Result: {"name": "John", "age": null}
-// fixes.valueCompleted === true
-```
-
-### String and Content Fixes
-
-```javascript
-// Unescaped newlines in strings
-const newlines = jaison('{"message": "Hello\nWorld"}');
-// ✅ Result: {"message": "Hello\\nWorld"}
-// fixes.newlineFixed === true
-
-// Unclosed strings
-const unclosed = jaison('{"name": "John", "message": "Hello');
-// ✅ Result: {"name": "John", "message": "Hello"}
-// fixes.stringClosed === true
-```
-
-## Repair Capabilities
-
-Jaison provides the following automatic repair features:
-
-| Issue Type | Description | Example | Fix Applied |
-|------------|-------------|---------|-------------|
-| **Markdown Removal** | Strips code block wrappers | `\`\`\`json\n{...}\n\`\`\`` | Extracts pure JSON |
-| **Bracket Completion** | Closes missing brackets | `{"items": [1, 2, 3` | Adds `]}` |
-| **String Closing** | Closes unclosed strings | `{"msg": "hello` | Adds closing `"` |
-| **Newline Escaping** | Escapes raw newlines | `{"text": "line1\nline2"}` | Becomes `"line1\\nline2"` |
-| **Comma Normalization** | Removes trailing commas | `{"a": 1, "b": 2,}` | Removes final `,` |
-| **Value Completion** | Adds missing values | `{"key":}` | Becomes `{"key": null}` |
-| **Extra Text Removal** | Removes trailing non-JSON content | `{"data": 1} // comment` | Keeps only JSON |
 
 ## Error Handling and Limitations
 
@@ -266,6 +306,7 @@ Jaison provides the following automatic repair features:
 - ✅ Incomplete streaming responses
 - ✅ Unescaped newlines in strings
 - ✅ Missing values after colons
+- ✅ Chinese punctuation in JSON structure (：→: and ；→;)
 
 ### What Jaison Cannot Fix
 - ❌ Fundamentally broken JSON structure
@@ -293,8 +334,9 @@ The test suite validates:
 
 - **Core Functionality**: Basic JSON parsing and error handling
 - **AI Scenarios**: Real-world AI output patterns and edge cases  
-- **Markdown Handling**: Various code block formats (`\`\`\`json`, `\`\`\`js`, etc.)
+- **Markdown Handling**: Various code block formats (\`\`\`json, \`\`\`js, etc.)
 - **Error Recovery**: Bracket completion, string repair, comma fixes
+- **Chinese Punctuation**: Conversion of Chinese punctuation marks (：；) to English equivalents
 - **Performance**: Large input handling and DoS prevention
 - **Security**: Input sanitization and safe error handling
 - **Unicode Support**: Proper handling of international characters
@@ -307,6 +349,7 @@ The test suite validates:
 - **API Integration**: Handle malformed responses from AI services
 - **Data Processing**: Clean up JSON from automated content generation
 - **Streaming Responses**: Parse incomplete JSON from real-time AI streams
+- **International AI**: Handle Chinese AI responses with mixed punctuation
 
 ### Development and Testing
 - **Robust Parsing**: Graceful handling of malformed test data
