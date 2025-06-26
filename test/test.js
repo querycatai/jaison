@@ -1238,6 +1238,111 @@ describe("Jaison Parser", () => {
             const result = parser(data);
             assert.deepStrictEqual(result, { precise: 3.141592653589793238462643383279502884197 });
         });
+
+        // Enhanced Number Format Support Tests
+        describe('Enhanced Number Formats', () => {
+            it('should parse numbers with positive sign', () => {
+                const data = `{
+                    "pos_int": +42,
+                    "pos_float": +3.14,
+                    "pos_scientific": +1.5e10,
+                    "pos_zero": +0
+                }`;
+                const result = parser(data);
+                assert.deepStrictEqual(result, {
+                    pos_int: 42,
+                    pos_float: 3.14,
+                    pos_scientific: 15000000000,
+                    pos_zero: 0
+                });
+            });
+
+            it('should parse numbers starting with decimal point', () => {
+                const data = `{
+                    "decimal_only": .123,
+                    "half": .5,
+                    "scientific": .2e-3,
+                    "zero_decimal": .0
+                }`;
+                const result = parser(data);
+                assert.deepStrictEqual(result, {
+                    decimal_only: 0.123,
+                    half: 0.5,
+                    scientific: 0.0002,
+                    zero_decimal: 0
+                });
+            });
+
+            it('should parse combined positive sign and decimal point', () => {
+                const data = `{
+                    "pos_decimal": +.75,
+                    "pos_scientific": +.999e-3,
+                    "pos_zero_decimal": +.0
+                }`;
+                const result = parser(data);
+                assert.deepStrictEqual(result, {
+                    pos_decimal: 0.75,
+                    pos_scientific: 0.000999,
+                    pos_zero_decimal: 0
+                });
+            });
+
+            it('should handle enhanced formats in arrays', () => {
+                const data = '[+1, .5, +.25, +0, .0, +3.14]';
+                const result = parser(data);
+                assert.deepStrictEqual(result, [1, 0.5, 0.25, 0, 0, 3.14]);
+            });
+
+            it('should handle mixed enhanced and standard number formats', () => {
+                const data = `{
+                    "standard": 42,
+                    "negative": -42,
+                    "positive": +42,
+                    "decimal": .5,
+                    "standard_decimal": 0.5,
+                    "scientific": 1.5e10,
+                    "pos_scientific": +1.5e10,
+                    "decimal_scientific": .2e-3
+                }`;
+                const result = parser(data);
+                assert.deepStrictEqual(result, {
+                    standard: 42,
+                    negative: -42,
+                    positive: 42,
+                    decimal: 0.5,
+                    standard_decimal: 0.5,
+                    scientific: 15000000000,
+                    pos_scientific: 15000000000,
+                    decimal_scientific: 0.0002
+                });
+            });
+
+            it('should handle enhanced number formats as object keys', () => {
+                const data = '{+1: "positive", .5: "decimal", +.25: "both"}';
+                const result = parser(data);
+                assert.deepStrictEqual(result, {
+                    "+1": "positive",
+                    ".5": "decimal", 
+                    "+.25": "both"
+                });
+            });
+
+            it('should reject invalid enhanced number formats', () => {
+                const invalidCases = [
+                    '[+]',      // Just positive sign
+                    '[.]',      // Just decimal point
+                    '[+.]',     // Sign + dot without digits
+                    '[++1]',    // Double positive sign
+                    '[+-1]'     // Mixed signs
+                ];
+
+                invalidCases.forEach(testCase => {
+                    assert.throws(() => {
+                        parser(testCase);
+                    }, Error, `Should reject invalid format: ${testCase}`);
+                });
+            });
+        });
     });
 
     // Test Group: Python Constants Conversion
@@ -1925,7 +2030,7 @@ describe("Jaison Parser", () => {
                     "octal": 0o10,
                     "binary": 0b1010,
                     "float": 3.14,
-                    "scientific": 1e5
+                    "scientific": 1.5e10
                 }`;
                 const result = parser(data);
                 assert.deepStrictEqual(result, {
@@ -1934,7 +2039,7 @@ describe("Jaison Parser", () => {
                     octal: 8,
                     binary: 10,
                     float: 3.14,
-                    scientific: 100000
+                    scientific: 15000000000
                 });
             });
 
