@@ -1,11 +1,12 @@
 {
   "name": "jaison",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "A robust, fault-tolerant JSON parser engineered specifically for handling malformed JSON output from AI systems and language models. Supports Chinese punctuation and international characters.",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "test": "node test/test.js"
+    "test": "fibjs test/test.js",
+    "suites": "fibjs test/run-suites.js --verbose"
   },
   "repository": {
     "type": "git",
