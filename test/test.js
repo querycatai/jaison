@@ -577,6 +577,126 @@ describe("Jaison Parser", () => {
             // Incomplete unicode escape should cause parser to throw
             assert.throws(() => parser(data));
         });
+
+        it('should handle unescaped control characters in strings', () => {
+            // Test case with control characters that would cause JSON.parse to fail
+            const data = '{"title": "Line1\nLine2\tTabbed", "status": "success"}';
+            const result = parser(data);
+            assert.deepStrictEqual(result, {
+                title: "Line1\nLine2\tTabbed",
+                status: "success"
+            });
+        });
+
+        it('should handle various unescaped control characters', () => {
+            // Test with multiple control characters: \r, \n, \b, \f, \t, \v
+            const data = '{"message": "Hello\r\nWorld\b\f\t\v", "code": 200}';
+            const result = parser(data);
+            assert.deepStrictEqual(result, {
+                message: "Hello\r\nWorld\b\f\t\v",
+                code: 200
+            });
+        });
+
+        it('should handle control characters in object keys', () => {
+            // Test control characters in keys (edge case)
+            const data = '{"key\twith\ttabs": "value", "normal": "test"}';
+            const result = parser(data);
+            assert.deepStrictEqual(result, {
+                "key\twith\ttabs": "value",
+                normal: "test"
+            });
+        });
+
+        it('should handle newline characters in object keys', () => {
+            // Test newline characters in keys - this would cause JSON.parse to fail
+            const data = '{"key\nwith\nnewlines": "value1", "another\rkey": "value2"}';
+            const result = parser(data);
+            assert.deepStrictEqual(result, {
+                "key\nwith\nnewlines": "value1",
+                "another\rkey": "value2"
+            });
+        });
+
+        it('should handle various control characters in object keys', () => {
+            // Test multiple control characters in keys: \b, \f, \v
+            const data = '{"key\bwith\fbackspace": "value1", "vertical\vtab": "value2"}';
+            const result = parser(data);
+            assert.deepStrictEqual(result, {
+                "key\bwith\fbackspace": "value1",
+                "vertical\vtab": "value2"
+            });
+        });
+
+        it('should handle mixed control characters in object keys and values', () => {
+            // Test control characters in both keys and values
+            const data = '{"key\twith\ttab": "value\nwith\nnewline", "normal\rkey": "normal\tvalue"}';
+            const result = parser(data);
+            assert.deepStrictEqual(result, {
+                "key\twith\ttab": "value\nwith\nnewline",
+                "normal\rkey": "normal\tvalue"
+            });
+        });
+
+        it('should handle control characters in keys of nested objects', () => {
+            // Test control characters in keys of nested structures
+            const data = '{"outer\tkey": {"inner\nkey": "value", "another\rinner": "test"}, "normal": {"clean": "data"}}';
+            const result = parser(data);
+            assert.deepStrictEqual(result, {
+                "outer\tkey": {
+                    "inner\nkey": "value",
+                    "another\rinner": "test"
+                },
+                normal: {
+                    clean: "data"
+                }
+            });
+        });
+
+        it('should demonstrate advantage over JSON.parse with control characters in keys', () => {
+            // This test shows that our parser handles cases where JSON.parse would fail
+            const dataWithControlCharsInKeys = '{"key\nwith\nnewline": "value", "tab\tkey": "test"}';
+            
+            // Our parser should succeed
+            const jaisonResult = parser(dataWithControlCharsInKeys);
+            assert.deepStrictEqual(jaisonResult, {
+                "key\nwith\nnewline": "value",
+                "tab\tkey": "test"
+            });
+            
+            // JSON.parse should fail with this input
+            assert.throws(() => {
+                JSON.parse(dataWithControlCharsInKeys);
+            }, /Bad control character in string literal/);
+        });
+
+        it('should handle control characters in nested structures', () => {
+            // Test control characters in complex nested JSON
+            const data = '{"data": {"lines": ["Line1\nLine2", "Tab\tSeparated"], "info": "Multi\r\nLine"}}';
+            const result = parser(data);
+            assert.deepStrictEqual(result, {
+                data: {
+                    lines: ["Line1\nLine2", "Tab\tSeparated"],
+                    info: "Multi\r\nLine"
+                }
+            });
+        });
+
+        it('should demonstrate advantage over JSON.parse with control characters', () => {
+            // This test shows that our parser handles cases where JSON.parse would fail
+            const dataWithControlChars = '{"text": "Line1\nLine2\tTabbed"}';
+            
+            // Our parser should succeed
+            const jaisonResult = parser(dataWithControlChars);
+            assert.deepStrictEqual(jaisonResult, {
+                text: "Line1\nLine2\tTabbed"
+            });
+            
+            // JSON.parse should fail with this input
+            assert.throws(() => {
+                JSON.parse(dataWithControlChars);
+            }, /Bad control character in string literal/);
+        });
     });
 
     describe('Advanced Comma & Colon Handling', () => {
