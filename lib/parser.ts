@@ -3,7 +3,7 @@
  * Maintains all original functionality while improving performance
  */
 
-const { 
+import { 
     TRUE_ALIAS, 
     FALSE_ALIAS, 
     NULL_ALIAS, 
@@ -11,16 +11,55 @@ const {
     TOKEN_TYPES, 
     CONTAINER_TYPES, 
     RADIX 
-} = require('./constants');
+} from './constants';
+
+interface Token {
+    type: string;
+    value: string;
+    radix?: number;
+    isNegative?: boolean;
+    isPositive?: boolean;
+}
+
+interface Container {
+    type: string;
+    value: any;
+    _key?: string;
+}
+
+interface BracketResult {
+    shouldReturn: boolean;
+    value?: any;
+    newContainer?: Container;
+    skipNext?: boolean;
+}
+
+interface KeyResult {
+    isKey?: boolean;
+    shouldContinue?: boolean;
+    shouldThrow?: boolean;
+    key?: string;
+}
+
+interface PunctuationResult {
+    shouldThrow?: boolean;
+    shouldContinue?: boolean;
+}
+
+interface AssignResult {
+    shouldReturn: boolean;
+    value?: any;
+    skipNext?: boolean;
+}
 
 /**
  * Parse tokens into JavaScript objects/values
  * @param {Array} tokens - Array of token objects from tokenizer
  * @returns {*} Parsed JavaScript value
  */
-function parse(tokens) {
-    const stacks = [];
-    let currentContainer = null;
+export function parse(tokens: Token[]): any {
+    const stacks: Container[] = [];
+    let currentContainer: Container | null = null;
     const tokenLength = tokens.length;
 
     for (let i = 0; i < tokenLength; i++) {
@@ -75,7 +114,30 @@ function parse(tokens) {
         }
 
         // Parse value tokens
-        const value = parseValueToken(token);
+        let value: any;
+        
+        // Special handling for consecutive identifiers in array/object value context
+        // This handles cases like: [## MARKDOWN TEXT] where quotes are missing
+        if (token.type === TOKEN_TYPES.IDENTIFIER && currentContainer) {
+            // Look ahead to see if there are consecutive identifiers
+            const identifierValues = [token.value];
+            let j = i + 1;
+            
+            while (j < tokenLength && tokens[j].type === TOKEN_TYPES.IDENTIFIER) {
+                identifierValues.push(tokens[j].value);
+                j++;
+            }
+            
+            // If we found multiple consecutive identifiers, merge them as unquoted string
+            if (identifierValues.length > 1) {
+                value = identifierValues.join(' ');
+                i = j - 1; // Skip the identifiers we merged
+            } else {
+                value = parseValueToken(token);
+            }
+        } else {
+            value = parseValueToken(token);
+        }
 
         // Assign value to current container or return if top-level
         const assignResult = assignValue(value, currentContainer, tokens, i, tokenLength);
@@ -103,7 +165,7 @@ function parse(tokens) {
  * @param {number} tokenLength - Total token count
  * @returns {Object} Result object with action instructions
  */
-function handleBracketToken(token, currentContainer, stacks, tokens, index, tokenLength) {
+function handleBracketToken(token: Token, currentContainer: Container | null, stacks: Container[], tokens: Token[], index: number, tokenLength: number): BracketResult {
     if (token.value === '{') {
         return createObjectContainer(currentContainer, stacks);
     } else if (token.value === '}') {
@@ -123,8 +185,8 @@ function handleBracketToken(token, currentContainer, stacks, tokens, index, toke
  * @param {Array} stacks - Container stack
  * @returns {Object} Result object
  */
-function createObjectContainer(currentContainer, stacks) {
-    const newContainer = {
+function createObjectContainer(currentContainer: Container | null, stacks: Container[]): BracketResult {
+    const newContainer: Container = {
         type: CONTAINER_TYPES.OBJECT,
         value: {}
     };
@@ -149,8 +211,8 @@ function createObjectContainer(currentContainer, stacks) {
  * @param {Array} stacks - Container stack
  * @returns {Object} Result object
  */
-function createArrayContainer(currentContainer, stacks) {
-    const newContainer = {
+function createArrayContainer(currentContainer: Container | null, stacks: Container[]): BracketResult {
+    const newContainer: Container = {
         type: CONTAINER_TYPES.ARRAY,
         value: []
     };
@@ -178,7 +240,7 @@ function createArrayContainer(currentContainer, stacks) {
  * @param {string} errorMessage - Error message if unmatched
  * @returns {Object} Result object
  */
-function closeContainer(stacks, tokens, index, tokenLength, errorMessage) {
+function closeContainer(stacks: Container[], tokens: Token[], index: number, tokenLength: number, errorMessage: string): BracketResult {
     if (stacks.length > 0) {
         const completedContainer = stacks.pop();
         
@@ -192,7 +254,7 @@ function closeContainer(stacks, tokens, index, tokenLength, errorMessage) {
         } else {
             return { 
                 shouldReturn: true, 
-                value: completedContainer.value 
+                value: completedContainer?.value 
             };
         }
     } else {
@@ -205,7 +267,7 @@ function closeContainer(stacks, tokens, index, tokenLength, errorMessage) {
  * @param {Object} token - Current token
  * @returns {Object} Result object
  */
-function handleObjectKey(token) {
+function handleObjectKey(token: Token): KeyResult {
     switch (token.type) {
         case TOKEN_TYPES.STRING:
             return { isKey: true, key: parseStringValue(token) };
@@ -243,7 +305,7 @@ function handleObjectKey(token) {
  * @param {Array} stacks - Container stack
  * @returns {Object} Result object
  */
-function handlePunctuationToken(token, tokens, index, tokenLength, currentContainer, stacks) {
+function handlePunctuationToken(token: Token, tokens: Token[], index: number, tokenLength: number, currentContainer: Container | null, stacks: Container[]): PunctuationResult {
     if (stacks.length === 0) {
         return { shouldThrow: true };
     }
@@ -287,7 +349,7 @@ function handlePunctuationToken(token, tokens, index, tokenLength, currentContai
  * @param {Object} token - Token to parse
  * @returns {*} Parsed value
  */
-function parseValueToken(token) {
+function parseValueToken(token: Token): any {
     switch (token.type) {
         case TOKEN_TYPES.IDENTIFIER:
             return parseIdentifierValue(token);
@@ -308,11 +370,11 @@ function parseValueToken(token) {
  * @param {Object} token - Identifier token
  * @returns {*} Parsed value
  */
-function parseIdentifierValue(token) {
+function parseIdentifierValue(token: Token): any {
     const tokenValue = token.value;
     const tokenValueLower = tokenValue.toLowerCase();
     
-    // Same alias handling as original
+    // Handle recognized constants
     if (TRUE_ALIAS.has(tokenValueLower)) {
         return true;
     } else if (FALSE_ALIAS.has(tokenValueLower)) {
@@ -322,8 +384,9 @@ function parseIdentifierValue(token) {
     } else if (UNDEFINED_ALIAS.has(tokenValueLower)) {
         return undefined;
     } else {
-        // Same error message as original
-        throw new Error(`Unexpected identifier "${tokenValue}" in value position. Only recognized constants (true, false, null, undefined, etc.) are allowed.`);
+        // Fault-tolerant: treat unrecognized identifiers as unquoted strings
+        // This handles cases where AI models generate JSON with missing quotes
+        return tokenValue;
     }
 }
 
@@ -332,7 +395,7 @@ function parseIdentifierValue(token) {
  * @param {Object} token - String token
  * @returns {string} Parsed string value
  */
-function parseStringValue(token) {
+function parseStringValue(token: Token): string {
     // Same string escape handling as original
     let stringValue = token.value;
     
@@ -351,9 +414,9 @@ function parseStringValue(token) {
  * @param {Object} token - Number token
  * @returns {number} Parsed number value
  */
-function parseNumberValue(token) {
+function parseNumberValue(token: Token): number {
     const numValue = token.value;
-    let value;
+    let value: number;
     
     // Same number parsing logic as original
     if (token.radix === RADIX.HEXADECIMAL) {
@@ -387,11 +450,11 @@ function parseNumberValue(token) {
  * @param {number} tokenLength - Total token count
  * @returns {Object} Result object
  */
-function assignValue(value, currentContainer, tokens, index, tokenLength) {
+function assignValue(value: any, currentContainer: Container | null, tokens: Token[], index: number, tokenLength: number): AssignResult {
     // Same value assignment logic as original
     if (currentContainer) {
         if (currentContainer.type === CONTAINER_TYPES.OBJECT) {
-            currentContainer.value[currentContainer._key] = value;
+            currentContainer.value[currentContainer._key!] = value;
             delete currentContainer._key;
         } else {
             currentContainer.value.push(value);
@@ -410,7 +473,7 @@ function assignValue(value, currentContainer, tokens, index, tokenLength) {
  * @param {Object} currentContainer - Current container context
  * @returns {*} Final parsed value
  */
-function handleUnclosedContainers(stacks, currentContainer) {
+function handleUnclosedContainers(stacks: Container[], currentContainer: Container | null): any {
     // Same ending logic as original
     if (stacks.length > 0) {
         // Handle any pending keys with null values
@@ -426,7 +489,3 @@ function handleUnclosedContainers(stacks, currentContainer) {
     // If no containers and no values were processed, return undefined
     return undefined;
 }
-
-module.exports = {
-    parse
-};

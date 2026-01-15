@@ -7,8 +7,8 @@
  * @version 2.0.0 (Optimized)
  */
 
-const { tokenize } = require('./tokenizer');
-const { parse } = require('./parser');
+import { tokenize } from './tokenizer';
+import { parse } from './parser';
 
 /**
  * Parse JSON-like string with high fault tolerance
@@ -33,7 +33,7 @@ const { parse } = require('./parser');
  * // Various number formats
  * jaison('{"hex": 0xff, "bin": 0b1010}') // → { hex: 255, bin: 10 }
  */
-function jaison(jsonString) {
+export default function jaison(jsonString: string): any {
     // Input validation
     if (jsonString === null || jsonString === undefined || typeof jsonString !== 'string') {
         throw new Error('Invalid input: jsonString must be a string');
@@ -53,5 +53,5 @@ function jaison(jsonString) {
     return parse(tokens);
 }
 
-// Export main function
-module.exports = jaison;
+// Named export for CommonJS compatibility
+export { jaison };

@@ -3,15 +3,44 @@
  * Replaces complex regex with manual character-by-character parsing
  */
 
-const { TOKEN_TYPES, RADIX } = require('./constants');
+import { TOKEN_TYPES, RADIX } from './constants';
+
+interface Token {
+    type: string;
+    value: string;
+    radix?: number;
+    isNegative?: boolean;
+    isPositive?: boolean;
+}
+
+interface TokenResult {
+    token: Token | null;
+    newPos: number;
+}
+
+interface StringTokenResult {
+    token: Token;
+    newPos: number;
+    skippedBadEscape?: boolean; // Indicates if we need to skip \", \', etc.
+}
+
+interface NumberTokenResult {
+    token: Token;
+    newPos: number;
+}
+
+interface CommentResult {
+    isComment: boolean;
+    newPos: number;
+}
 
 /**
  * Tokenize JSON string using optimized manual parsing
  * @param {string} jsonString - Input string to tokenize
  * @returns {Array} Array of token objects
  */
-function tokenize(jsonString) {
-    const tokens = [];
+export function tokenize(jsonString: string): Token[] {
+    const tokens: Token[] = [];
     const len = jsonString.length;
     let pos = 0;
 
@@ -38,6 +67,18 @@ function tokenize(jsonString) {
             const stringToken = parseStringToken(jsonString, pos);
             tokens.push(stringToken.token);
             pos = stringToken.newPos;
+            
+            // If we terminated early due to bad escape, skip the \' or \" and optional punctuation
+            if (stringToken.skippedBadEscape) {
+                // Skip \' or \"
+                if (pos < len && jsonString[pos] === '\\' && pos + 1 < len && (jsonString[pos + 1] === '"' || jsonString[pos + 1] === "'")) {
+                    pos += 2;
+                    // Skip optional comma or colon
+                    if (pos < len && (jsonString[pos] === ',' || jsonString[pos] === ':')) {
+                        pos++;
+                    }
+                }
+            }
             continue;
         }
         
@@ -85,10 +126,12 @@ function tokenize(jsonString) {
  * @param {number} startPos - Starting position
  * @returns {Object} Token and new position
  */
-function parseStringToken(jsonString, startPos) {
+function parseStringToken(jsonString: string, startPos: number): StringTokenResult {
     const len = jsonString.length;
     const quoteChar = jsonString[startPos]; // Can be " or '
     let pos = startPos + 1; // Skip opening quote
+    let tokenValue: string;
+    let foundEarlyTermination = false;
     
     while (pos < len) {
         const c = jsonString[pos];
@@ -97,16 +140,38 @@ function parseStringToken(jsonString, startPos) {
             break;
         } else if (c === '\\') {
             pos += 2; // Skip escape sequence
+        } else if (c === '\n' || c === '\r') {
+            // Check if this is a case of incorrectly escaped quote before newline
+            // Look back to see if the pattern matches: \", \', \",, \":, \',, or \':
+            const beforeNewline = jsonString.slice(startPos + 1, pos);
+            const matchEscapedQuote = /\\["']([,:])?$/.exec(beforeNewline);
+            
+            if (matchEscapedQuote) {
+                // This looks like an incorrectly escaped quote at end of string
+                // Extract content before the backslash
+                const contentBeforeEscape = beforeNewline.substring(0, matchEscapedQuote.index);
+                tokenValue = quoteChar + contentBeforeEscape + quoteChar;
+                // Set position to the backslash (so \", etc. are not consumed)
+                pos = startPos + 1 + matchEscapedQuote.index;
+                foundEarlyTermination = true;
+                break;
+            } else {
+                // Normal hard newline in string, continue
+                pos++;
+            }
         } else {
             pos++;
         }
     }
     
-    let tokenValue = jsonString.slice(startPos, pos);
-    
-    // Handle missing closing quote (same as original logic)
-    if (!tokenValue.endsWith(quoteChar)) {
-        tokenValue += quoteChar;
+    // Only build tokenValue if not already set by early termination
+    if (!foundEarlyTermination) {
+        tokenValue = jsonString.slice(startPos, pos);
+        
+        // Handle missing closing quote
+        if (!tokenValue.endsWith(quoteChar)) {
+            tokenValue += quoteChar;
+        }
     }
     
     // Normalize single quotes to double quotes for JSON compatibility
@@ -139,7 +204,8 @@ function parseStringToken(jsonString, startPos) {
             type: TOKEN_TYPES.STRING,
             value: tokenValue
         },
-        newPos: pos
+        newPos: pos,
+        skippedBadEscape: foundEarlyTermination
     };
 }
 
@@ -148,7 +214,7 @@ function parseStringToken(jsonString, startPos) {
  * @param {string} char - Punctuation character
  * @returns {Object} Token object
  */
-function parsePunctuationToken(char) {
+function parsePunctuationToken(char: string): Token {
     let normalizedPunctuation = char;
     if (char === '：') {
         normalizedPunctuation = ':';
@@ -168,12 +234,12 @@ function parsePunctuationToken(char) {
  * @param {number} startPos - Starting position
  * @returns {Object} Token and new position
  */
-function parseNumberToken(jsonString, startPos) {
+function parseNumberToken(jsonString: string, startPos: number): NumberTokenResult {
     const len = jsonString.length;
     let pos = startPos;
     let isNegative = false;
     let isPositive = false;
-    let radix = RADIX.DECIMAL;
+    let radix: number = RADIX.DECIMAL;
     
     // Handle sign
     if (jsonString[pos] === '-') {
@@ -187,7 +253,7 @@ function parseNumberToken(jsonString, startPos) {
     // Check if this is a valid number start after sign or dot
     if (pos >= len) {
         // Just a sign, treat as identifier
-        return parseIdentifierToken(jsonString, startPos);
+        return parseIdentifierToken(jsonString, startPos) as NumberTokenResult;
     }
     
     const firstChar = jsonString[pos];
@@ -201,7 +267,7 @@ function parseNumberToken(jsonString, startPos) {
             while (pos < len && /[\d.eE+-]/.test(jsonString[pos])) pos++;
         } else {
             // Invalid, treat as identifier
-            return parseIdentifierToken(jsonString, startPos);
+            return parseIdentifierToken(jsonString, startPos) as NumberTokenResult;
         }
     } else if (firstChar >= '0' && firstChar <= '9') {
         // Determine number format and radix
@@ -233,7 +299,7 @@ function parseNumberToken(jsonString, startPos) {
         }
     } else {
         // Not a valid number, treat as identifier
-        return parseIdentifierToken(jsonString, startPos);
+        return parseIdentifierToken(jsonString, startPos) as NumberTokenResult;
     }
     
     const numberValue = jsonString.slice(isNegative || isPositive ? startPos + 1 : startPos, pos);
@@ -256,7 +322,7 @@ function parseNumberToken(jsonString, startPos) {
  * @param {number} startPos - Starting position
  * @returns {Object} Token and new position
  */
-function parseIdentifierToken(jsonString, startPos) {
+function parseIdentifierToken(jsonString: string, startPos: number): TokenResult {
     const len = jsonString.length;
     let pos = startPos;
     
@@ -286,7 +352,7 @@ function parseIdentifierToken(jsonString, startPos) {
  * @param {number} startPos - Starting position (should be '/')
  * @returns {Object} isComment flag and new position
  */
-function skipComment(jsonString, startPos) {
+function skipComment(jsonString: string, startPos: number): CommentResult {
     const len = jsonString.length;
     
     if (startPos + 1 >= len) {
@@ -334,7 +400,3 @@ function skipComment(jsonString, startPos) {
     // Not a comment, just a forward slash
     return { isComment: false, newPos: startPos };
 }
-
-module.exports = {
-    tokenize
-};
