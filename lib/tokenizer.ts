@@ -130,7 +130,7 @@ function parseStringToken(jsonString: string, startPos: number): StringTokenResu
     const len = jsonString.length;
     const quoteChar = jsonString[startPos]; // Can be " or '
     let pos = startPos + 1; // Skip opening quote
-    let tokenValue: string;
+    let tokenValue: string = '';
     let foundEarlyTermination = false;
     
     while (pos < len) {

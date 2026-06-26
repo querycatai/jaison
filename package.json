@@ -1,6 +1,6 @@
 {
   "name": "jaison",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "A robust, fault-tolerant JSON parser engineered specifically for handling malformed JSON output from AI systems and language models. Supports Chinese punctuation and international characters.",
   "type": "module",
   "main": "./index.ts",
